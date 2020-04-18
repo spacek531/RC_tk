@@ -76,21 +76,21 @@ class UDim2 {
 }
 
 // Widget class
-function GetRandomCharacter() {
+function GetRandomCharacter(): string {
     return String.fromCharCode(context.getRandom(65, 65 + 25));
 }
 
-function GetRandomName() { // random ten letter alphabetic name
+function GetRandomName(): string { // random ten letter alphabetic name
     return GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter() + GetRandomCharacter()
 }
 
-class BaseWidget {
+class tk_Widget { //abstract since there's no rectangle widget yet
     name: string;
 
     _type: string;
     _realName: string;
-    _parent: BaseWidget;
-    _children: BaseWidget[];
+    _parent: tk_Widget;
+    _children: tk_Widget[];
     _realWidget: Widget;
     _window: Window;
 
@@ -121,10 +121,6 @@ class BaseWidget {
     }
     get realName(): string {
         return this._realName;
-    }
-
-    get parent(): BaseWidget {
-        return this._parent;
     }
 
     set position(position: UDim2) {
@@ -168,26 +164,100 @@ class BaseWidget {
         }
     }
 
-    getChildren() {
+    getChildren(): tk_Widget[] {
         return this._children;
     }
 
-    addChild(widget: BaseWidget) {
-        this._children.push(widget);
-        widget._parent = this;
-        widget._window = this._window;
-        widget.drawSizeAndPosition();
-    }
-    removeChild(widget: BaseWidget) {
-        var index = this._children.indexOf(widget);
-        if (index >= 0) {
-            widget._children.splice(index, 1);
+    getDescendants(arr?: tk_Widget[]): tk_Widget[] {
+        if (!arr) {
+            arr = [];
         }
-        widget._parent = null;
-        widget._window = null;
+        for (var i = 1; i < this._children.length; i++) {
+            arr.push(this._children[i]);
+            this._children[i].getDescendants(arr);
+        }
+        return arr;
     }
 
-    drawSizeAndPosition() {
+    setWindow(window: Window): void {
+        this._window = window;
+    }
+
+    set parent(widget: tk_Widget) {
+        var descendants = this.getDescendants();
+
+        if (this._parent) {
+            for (var i = 1; i < this._parent._children.length; i++) {
+                if (this._parent._children[i] === this) {
+                    this._parent._children.splice(i, 1);
+                    break;
+                }
+            }
+            for (var i = 1; i < descendants.length; i++) {
+                descendants[i].setWindow(null);
+            }
+        }
+        widget._children.push(widget);
+        this._parent = widget;
+        if (widget._window) {
+            this.setWindow(widget._window);
+            for (var i = 1; i < descendants.length; i++) {
+                descendants[i].setWindow(widget._window);
+            }
+        }
+        this.drawSizeAndPosition();
+    }
+    get parent(): tk_Widget {
+        return this._parent;
+    }
+
+    drawSizeAndPosition(): void {
+        if (this._parent) {
+            this._absoluteSize = Dim2.add(this._size.offset, Dim2.multiply(this._parent._absoluteCanvasSize, this._size.scale));
+            this._windowPosition = Dim2.add(Dim2.add(this._parent._windowCanvasPosition, this._position.offset), Dim2.multiply(this._parent._absoluteCanvasSize, this._position.scale));
+        } else {
+            this._absoluteSize = this._size.offset;
+            this._windowPosition = this._position.offset;
+        }
+        this._absoluteCanvasSize = Dim2.subtract(Dim2.subtract(this._absoluteSize, this._padding[0]), this._padding[1]);
+        this._windowCanvasPosition = Dim2.add(this._windowPosition, this._padding[0]);
+
+        for (var i = 1; i < this._children.length; i++) {
+            this._children[i].drawSizeAndPosition();
+        }
+    }
+}
+
+class tk_RealWidget extends tk_Widget {
+    text: string;
+    constructor(type: string) {
+        super();
+        this._type = type;
+    }
+    getRealWidget(): void {
+        var obj = {
+            type: this._type,
+            name: this._realName,
+            x: this._windowPosition.x,
+            y: this._windowPosition.y,
+            width: this._absoluteSize.x,
+            height: this._absoluteSize.y,
+            isDisabled: this._isDisabled,
+        };
+        this._window.widgets.push(obj);
+        this._realWidget = window.findWidget(this._realName);
+    }
+
+    setWindow(window: Window): void {
+        this._window = window;
+        if (window) {
+            this.getRealWidget();
+        } else if (this._realWidget) {
+            delete(this._realWidget);
+        }
+    }
+
+    drawSizeAndPosition(): void {
         if (this._parent) {
             this._absoluteSize = Dim2.add(this._size.offset, Dim2.multiply(this._parent._absoluteCanvasSize, this._size.scale));
             this._windowPosition = Dim2.add(Dim2.add(this._parent._windowCanvasPosition, this._position.offset), Dim2.multiply(this._parent._absoluteCanvasSize, this._position.scale));
@@ -207,6 +277,12 @@ class BaseWidget {
             this._realWidget.y = this._windowPosition.y;
             this._realWidget.width = this._absoluteSize.x;
             this._realWidget.height = this._absoluteSize.y;
+        }
+    }
+    set isDisabled(disabled: boolean) {
+        this._isDisabled = disabled;
+        if (this._realWidget) {
+            this._realWidget.isDisabled = disabled;
         }
     }
 }
